@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Rest API
+
+Globals:
+  Function:
+    Timeout: 120
+    Handler: app.lambdaHandler
+    Runtime: nodejs12.x
+
+Parameters:
+  StageName:
+    Type: String
+    Default: dev
+  ZephyrApiKey:
+    Type: String
+  RfqaApiKey:
+    Type: String
+  JiraProjectKey:
+    Type: String
+  JiraTestCycleLink:
+    Type: String
+  MmIncomingWebhook:
+    Type: String
+  MmWebhookUsername:
+    Type: String
+  Token:
+    Type: String
+
+Resources:
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref StageName
+      Auth:
+        DefaultAuthorizer: LambdaRequestAuthorizer
+        Authorizers:
+          LambdaRequestAuthorizer:
+            FunctionPayloadType: REQUEST
+            FunctionArn: !GetAtt RequestAuthorizerLambdaFunction.Arn
+            Identity:
+              QueryStrings:
+                - token
+              ReauthorizeEvery: 100
+
+  WebhookLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/webhook
+      Events:
+        RootGet:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /rfqa
+            Method: post
+      Environment:
+        Variables:
+          ZEPHYR_API_KEY: !Ref ZephyrApiKey
+          RFQA_API_KEY: !Ref RfqaApiKey
+          JIRA_PROJECT_KEY: !Ref JiraProjectKey
+          JIRA_TEST_CYCLE_LINK: !Ref JiraTestCycleLink
+          MM_INCOMING_WEBHOOK: !Ref MmIncomingWebhook
+          MM_WEBHOOK_USERNAME: !Ref MmWebhookUsername
+
+  RequestAuthorizerLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/request_authorizer
+      Environment:
+        Variables:
+          TOKEN: !Ref Token
+
+Outputs:
+  RestApiEndpoint:
+    Description: "Rest API endpoint URL"
+    Value: !Sub
+      - "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiStage}"
+      - ApiStage: !Ref StageName
